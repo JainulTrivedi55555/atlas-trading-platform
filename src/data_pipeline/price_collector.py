@@ -10,33 +10,33 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from src.utils.config import TICKERS, TRAIN_START, TEST_END, RAW_DIR
 
 def download_price_data(tickers, start, end):
-    """Download adjusted OHLCV data. Returns dict of {ticker: DataFrame}."""
     data = {}
     save_dir = RAW_DIR / 'price'
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    for ticker in tqdm(tickers, desc='Downloading'):
+
+    for ticker in tqdm(tickers, desc='Downloading prices'):
         try:
-            df = yf.download(
-                ticker, 
-                start=start, 
+            # Updated method — more reliable in newer yfinance
+            stock = yf.Ticker(ticker)
+            df = stock.history(
+                start=start,
                 end=end,
-                auto_adjust=True,   # Adjusts for splits & dividends
-                progress=False
-            ) 
+                auto_adjust=True
+            )
 
             if df.empty:
                 print(f'WARNING: No data for {ticker}')
                 continue
-                
-            filepath = save_dir / f'{ticker}_daily.csv'
-            df.to_csv(filepath)
+
+            # Clean up column names
+            df.index = df.index.tz_localize(None)  # Remove timezone
+            df.to_csv(save_dir / f'{ticker}_daily.csv')
             data[ticker] = df
             print(f'  {ticker}: {len(df)} rows saved')
-            
+
         except Exception as e:
             print(f'ERROR {ticker}: {e}')
-            
+
     return data
 
 def load_price_data(ticker):
