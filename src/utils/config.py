@@ -9,7 +9,28 @@ PROCESSED_DIR = DATA_DIR / 'processed'
 ALPHA_VANTAGE_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', '')
 FRED_API_KEY      = os.getenv('FRED_API_KEY', '')
 NEWS_API_KEY      = os.getenv('NEWS_API_KEY', '')
-TICKERS = ['AAPL','MSFT','GOOGL','AMZN','META','JPM','GS','BAC','NVDA','TSLA']
+TICKERS = [
+    # Group 1 — Original large cap tech + finance
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META',
+    'JPM', 'GS', 'BAC', 'NVDA', 'TSLA',
+    # Group 2 — Additional large caps (different sectors)
+    'NFLX',
+    'ORCL',
+    'AMD',
+    'CRM',
+    'UBER',
+    'WMT',
+    'JNJ',
+    'XOM',
+    'LLY',
+    'V',
+    # Group 3 — ETFs (market context signals)
+    'SPY',
+    'QQQ',
+    'IWM',
+    'GLD',
+    'TLT',
+]
 TRAIN_START = '2015-01-01'
 TRAIN_END   = '2022-12-31'
 VAL_START   = '2023-01-01'
