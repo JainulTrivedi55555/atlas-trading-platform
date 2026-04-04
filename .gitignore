@@ -221,3 +221,13 @@ mlruns/
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+
+
+experiments/models/data/live/ 
+data/broker/ 
+data/sentiment/ 
+data/backtest_report.csv 
+experiments/mlflow.db 
+scheduler_log.txt 
+mlruns/ 
+reports/drift/ 
