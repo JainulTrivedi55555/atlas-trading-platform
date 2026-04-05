@@ -1,0 +1,9 @@
+[Unit]
+Description=ATLAS Scheduler Timer - Daily at 8:30 AM ET
+
+[Timer]
+OnCalendar=*-*-* 08:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

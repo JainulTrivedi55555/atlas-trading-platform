@@ -1,0 +1,13 @@
+[Unit]
+Description=ATLAS Daily Data + Sentiment + Broker Pipeline
+After=network.target
+
+[Service]
+Type=oneshot
+User=jainultrivedi22222
+WorkingDirectory=/home/jainultrivedi22222/atlas-trading-platform
+Environment="PATH=/home/jainultrivedi22222/miniconda3/envs/fintech/bin"
+EnvironmentFile=/home/jainultrivedi22222/atlas-trading-platform/.env
+ExecStart=/home/jainultrivedi22222/miniconda3/envs/fintech/bin/python scheduler.py --once
+StandardOutput=journal
+StandardError=journal

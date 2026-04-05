@@ -1,0 +1,24 @@
+[Unit]
+Description=ATLAS Streamlit Trading Dashboard
+After=network.target atlas-api.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=jainultrivedi22222
+WorkingDirectory=/home/jainultrivedi22222/atlas-trading-platform
+Environment="PATH=/home/jainultrivedi22222/miniconda3/envs/fintech/bin"
+EnvironmentFile=/home/jainultrivedi22222/atlas-trading-platform/.env
+ExecStart=/home/jainultrivedi22222/miniconda3/envs/fintech/bin/streamlit run \
+    dashboards/streamlit_dashboard.py \
+    --server.port 8501 \
+    --server.address 0.0.0.0 \
+    --server.headless true \
+    --server.enableCORS false
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
