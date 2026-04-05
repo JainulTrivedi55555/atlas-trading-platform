@@ -223,13 +223,37 @@ __pycache__/
 *.pyc
 
 
-experiments/models/data/live/ 
-data/broker/ 
-data/sentiment/ 
-data/backtest_report.csv 
-experiments/mlflow.db 
-scheduler_log.txt 
-mlruns/ 
-reports/drift/ 
-docs/drift/ 
-data/live/ 
+# ATLAS specific ignores
+.env
+*.key
+
+# Data directories
+data/live/
+data/broker/
+data/sentiment/
+data/processed/
+data/backtest_report.csv
+
+# Model files
+*.pkl
+*.pt
+*.onnx
+experiments/models/
+experiments/mlflow.db
+
+# MLflow
+mlruns/
+
+# Logs
+scheduler_log.txt
+
+# Drift reports
+reports/drift/
+docs/drift/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
