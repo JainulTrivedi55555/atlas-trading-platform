@@ -8,7 +8,7 @@
 ![GCP](https://img.shields.io/badge/Deployed-GCP-orange?style=flat-square&logo=google-cloud)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
-**A production-grade, end-to-end algorithmic trading platform — built across 16 development phases.**
+**A production-grade, end-to-end algorithmic trading platform — built across various development phases.**
 
 [🌐 Live Dashboard](https://atlas-trading-platform.me) · [📂 Repository](https://github.com/JainulTrivedi55555/atlas-trading-platform)
 
