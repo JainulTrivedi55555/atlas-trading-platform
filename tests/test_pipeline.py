@@ -20,13 +20,14 @@ def test_fetch_returns_dataframe():
     assert 'close' in df.columns, 'Missing close column'
     assert len(df) >= 60, f'Too few rows: {len(df)}'
     print(f'fetch test passed: {len(df)} rows, last={df.index[-1].date()}')
-def test_features_shape_is_43():
-    """Test that feature engineering produces exactly 43 features."""
+def test_features_use_training_schema():
+    """Test that feature engineering produces training-schema column names."""
     df_raw  = fetch_ohlcv('MSFT')
     df_feat = build_live_features(df_raw, 'MSFT')
     assert df_feat is not None, 'build_live_features returned None'
-    assert df_feat.shape == (1, 43), f'Wrong shape: {df_feat.shape}, expected (1,43)'
-    print(f'feature shape test passed: {df_feat.shape}')
+    for col in ['RSI_14', 'Volatility_20d', 'MACD', 'Daily_Return']:
+        assert col in df_feat.columns, f'Missing training column: {col}'
+    print(f'feature schema test passed: {df_feat.shape}')
 def test_validation_passes():
     """Test that valid features pass the validator."""
     df_raw  = fetch_ohlcv('NVDA')
@@ -46,7 +47,8 @@ def test_cache_save_and_load():
     # Load back
     cached = load_features('GOOGL')
     assert cached is not None, 'load_features returned None after save'
-    assert cached['features'].shape == (1, 43), 'Cached features wrong shape'
+    assert cached['features'].shape[0] == 1, 'Cached features wrong row count'
+    assert 'RSI_14' in cached['features'].columns, 'Cached features missing training schema'
     assert cached['as_of_date'] == str(as_of), 'as_of_date mismatch'
     print(f'cache round-trip test passed: as_of={as_of}')
 def test_pipeline_status_returns_all_tickers():
@@ -60,7 +62,7 @@ def test_pipeline_status_returns_all_tickers():
 if __name__ == '__main__':
     print('Running ATLAS Phase 11 Integration Tests...')
     test_fetch_returns_dataframe()
-    test_features_shape_is_43()
+    test_features_use_training_schema()
     test_validation_passes()
     test_cache_save_and_load()
     test_pipeline_status_returns_all_tickers()

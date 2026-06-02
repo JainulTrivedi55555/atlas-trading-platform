@@ -10,10 +10,10 @@ ALPHA_VANTAGE_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', '')
 FRED_API_KEY      = os.getenv('FRED_API_KEY', '')
 NEWS_API_KEY      = os.getenv('NEWS_API_KEY', '')
 TICKERS = [
-    # Group 1 — Original large cap tech + finance
+    # Group 1 - Original large cap tech + finance
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META',
     'JPM', 'GS', 'BAC', 'NVDA', 'TSLA',
-    # Group 2 — Additional large caps (different sectors)
+    # Group 2 - Additional large caps (different sectors)
     'NFLX',
     'ORCL',
     'AMD',
@@ -24,7 +24,7 @@ TICKERS = [
     'XOM',
     'LLY',
     'V',
-    # Group 3 — ETFs (market context signals)
+    # Group 3 - ETFs (market context signals)
     'SPY',
     'QQQ',
     'IWM',

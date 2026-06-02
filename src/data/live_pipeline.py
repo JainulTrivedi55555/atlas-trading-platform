@@ -67,96 +67,68 @@ def fetch_ohlcv(ticker: str, period: str = FETCH_PERIOD) -> pd.DataFrame | None:
         return None
 
 
+# Columns that must exist after live feature build (training schema from technical_indicators.py)
+REQUIRED_TRAINING_COLS = [
+    'RSI_14', 'Volatility_20d', 'MACD', 'Daily_Return', 'CMF', 'BB_Pct',
+]
+
+
 def build_live_features(df: pd.DataFrame, ticker: str) -> pd.DataFrame | None:
+    """
+    Build the latest feature row using the same schema as model training.
+
+    Uses add_technical_indicators() so column names and formulas match
+    data/processed/splits/{ticker}/X_train.csv (e.g. RSI_14, Volatility_20d).
+    """
     try:
+        from src.features.technical_indicators import add_technical_indicators
+
         df = df.copy().sort_index()
 
-        df['daily_return']      = df['close'].pct_change()
-        df['log_return']        = np.log(df['close'] / df['close'].shift(1))
-        df['high_low_spread']   = (df['high'] - df['low']) / df['close']
-        df['open_close_spread'] = (df['close'] - df['open']) / df['open']
-        df['vwap_approx']       = (df['high'] + df['low'] + df['close']) / 3
+        # yfinance OHLCV (lowercase) -> training PascalCase
+        train_df = pd.DataFrame(index=df.index)
+        train_df['Open']   = df['open']
+        train_df['High']   = df['high']
+        train_df['Low']    = df['low']
+        train_df['Close']  = df['close']
+        train_df['Volume'] = df['volume']
 
-        for w in [5, 10, 20, 50, 200]:
-            df[f'ma{w}'] = df['close'].rolling(w).mean()
+        # Same derived columns as src/data_pipeline/price_cleaner.py
+        train_df['Daily_Return'] = train_df['Close'].pct_change()
+        train_df['Log_Return']   = np.log(train_df['Close'] / train_df['Close'].shift(1))
+        train_df['Price_Range']  = train_df['High'] - train_df['Low']
+        train_df['Gap']          = train_df['Open'] - train_df['Close'].shift(1)
 
-        df['ema12']    = df['close'].ewm(span=12, adjust=False).mean()
-        df['ema26']    = df['close'].ewm(span=26, adjust=False).mean()
-        df['ema_diff'] = df['ema12'] - df['ema26']
+        # Placeholders for tickers whose splits include these columns
+        train_df['Dividends']      = 0.0
+        train_df['Stock Splits']   = 0.0
+        train_df['Capital Gains'] = 0.0
 
-        delta = df['close'].diff()
-        gain  = delta.clip(lower=0).rolling(14).mean()
-        loss  = (-delta.clip(upper=0)).rolling(14).mean()
-        rs    = gain / (loss + 1e-10)
-        df['rsi14']       = 100 - (100 / (1 + rs))
-        df['macd']        = df['ema12'] - df['ema26']
-        df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
-        df['macd_hist']   = df['macd'] - df['macd_signal']
+        train_df = add_technical_indicators(train_df)
 
-        for r in [5, 10, 20]:
-            df[f'roc{r}'] = df['close'].pct_change(r) * 100
+        # Same EMA ratio features as fix_features_and_retrain.py (AAPL-style models)
+        if 'EMA_12' in train_df.columns:
+            train_df['Price_vs_EMA12'] = (
+                (train_df['Close'] - train_df['EMA_12']) / train_df['EMA_12']
+            )
+        if 'EMA_26' in train_df.columns:
+            train_df['Price_vs_EMA26'] = (
+                (train_df['Close'] - train_df['EMA_26']) / train_df['EMA_26']
+            )
 
-        bb_mid         = df['close'].rolling(20).mean()
-        bb_std         = df['close'].rolling(20).std()
-        df['bb_upper'] = bb_mid + 2 * bb_std
-        df['bb_lower'] = bb_mid - 2 * bb_std
-        df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / bb_mid
-
-        tr = pd.concat([
-            df['high'] - df['low'],
-            (df['high'] - df['close'].shift(1)).abs(),
-            (df['low']  - df['close'].shift(1)).abs(),
-        ], axis=1).max(axis=1)
-
-        df['atr14']      = tr.rolling(14).mean()
-        df['hist_vol20'] = df['log_return'].rolling(20).std() * np.sqrt(252)
-        df['hist_vol60'] = df['log_return'].rolling(60).std() * np.sqrt(252)
-
-        df['vol_ma20']  = df['volume'].rolling(20).mean()
-        df['vol_ratio'] = df['volume'] / (df['vol_ma20'] + 1e-10)
-        df['obv']       = (np.sign(df['close'].diff()) * df['volume']).cumsum()
-        df['obv_ma20']  = df['obv'].rolling(20).mean()
-        df['obv_trend'] = df['obv'] - df['obv_ma20']
-
-        plus_dm  = df['high'].diff().clip(lower=0)
-        minus_dm = (-df['low'].diff()).clip(lower=0)
-        atr14_   = tr.rolling(14).mean()
-        df['plus_di']  = 100 * (plus_dm.rolling(14).mean()  / (atr14_ + 1e-10))
-        df['minus_di'] = 100 * (minus_dm.rolling(14).mean() / (atr14_ + 1e-10))
-        dx = (100 * (df['plus_di'] - df['minus_di']).abs() /
-              (df['plus_di'] + df['minus_di'] + 1e-10))
-        df['adx14'] = dx.rolling(14).mean()
-
-        tp       = (df['high'] + df['low'] + df['close']) / 3
-        mean_dev = tp.rolling(20).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=True)
-        df['cci20'] = (tp - tp.rolling(20).mean()) / (0.015 * mean_dev + 1e-10)
-
-        low14         = df['low'].rolling(14).min()
-        high14        = df['high'].rolling(14).max()
-        df['stoch_k'] = 100 * (df['close'] - low14) / (high14 - low14 + 1e-10)
-        df['stoch_d'] = df['stoch_k'].rolling(3).mean()
-        df['williams_r'] = -100 * (high14 - df['close']) / (high14 - low14 + 1e-10)
-
-        feature_cols = [
-            'open', 'high', 'low', 'close', 'volume',
-            'daily_return', 'log_return', 'high_low_spread',
-            'open_close_spread', 'vwap_approx',
-            'ma5', 'ma10', 'ma20', 'ma50', 'ma200',
-            'ema12', 'ema26', 'ema_diff',
-            'rsi14', 'macd', 'macd_signal', 'macd_hist', 'roc5', 'roc10', 'roc20',
-            'bb_upper', 'bb_lower', 'bb_width', 'atr14', 'hist_vol20', 'hist_vol60',
-            'vol_ma20', 'vol_ratio', 'obv', 'obv_ma20', 'obv_trend',
-            'adx14', 'plus_di', 'minus_di', 'cci20', 'stoch_k', 'stoch_d', 'williams_r',
-        ]
-
-        df = df[feature_cols].dropna()
-        if df.empty:
-            logger.error(f'{ticker}: All rows dropped after NaN removal')
+        # Latest row only — do not dropna() on full history (long-window cols
+        # leave early rows NaN but the last row is usable for live inference).
+        last_row = train_df.ffill().iloc[[-1]].fillna(0)
+        if last_row.empty:
+            logger.error(f'{ticker}: No rows available after feature build')
             return None
-
-        last_row = df.iloc[[-1]]
-        assert last_row.shape == (1, 43), f'Expected (1,43), got {last_row.shape}'
-        logger.info(f'{ticker}: Features built for {last_row.index[0].date()}')
+        if last_row[REQUIRED_TRAINING_COLS].isnull().any().any():
+            logger.error(f'{ticker}: Required prediction columns still NaN on latest row')
+            return None
+        logger.info(
+            f'{ticker}: Features built for {last_row.index[0].date()} '
+            f'({last_row.shape[1]} cols, training schema)'
+        )
         return last_row
 
     except Exception as e:
@@ -165,14 +137,16 @@ def build_live_features(df: pd.DataFrame, ticker: str) -> pd.DataFrame | None:
 
 
 def validate_feature_alignment(live_features: pd.DataFrame) -> bool:
-    if live_features.shape[1] != 43:
-        logger.error(f'Feature count mismatch: got {live_features.shape[1]}, expected 43')
+    missing = [c for c in REQUIRED_TRAINING_COLS if c not in live_features.columns]
+    if missing:
+        logger.error(f'Missing training-schema columns: {missing}')
         return False
-    if live_features.isnull().any().any():
-        logger.error(f'NaN in live features')
+    cols = [c for c in REQUIRED_TRAINING_COLS if c in live_features.columns]
+    if live_features[cols].isnull().any().any():
+        logger.error(f'NaN in required live feature columns: {cols}')
         return False
-    if np.isinf(live_features.values).any():
-        logger.error('Inf values in live features')
+    if np.isinf(live_features[cols].values).any():
+        logger.error('Inf values in required live feature columns')
         return False
     logger.info(f'Feature validation passed: shape={live_features.shape}')
     return True
@@ -248,7 +222,7 @@ def run_daily_pipeline():
 
     Steps:
       1. Fetch OHLCV from yfinance (25 tickers)
-      2. Build 43 technical indicator features
+      2. Build technical features (training schema via technical_indicators.py)
       3. Validate feature alignment
       4. Confidence filter: skip tickers below MIN_CONFIDENCE (0.55)
       5. Save passing tickers to live cache (broker only sees these)
