@@ -251,6 +251,10 @@ if __name__ == '__main__':
     if args.once:
         logger.info('Running in --once mode (single daily job, then exit)...')
         scheduled_daily_job()
+        # Weekly drift — production uses systemd daily timer, not APScheduler
+        if DRIFT_MONITOR_AVAILABLE and datetime.now().weekday() == 6:
+            logger.info('Sunday detected — running weekly drift check...')
+            run_drift_monitor()
         logger.info('ATLAS --once run complete.')
         sys.exit(0)
 

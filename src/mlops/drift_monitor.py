@@ -49,20 +49,23 @@ def load_reference_data(ticker: str) -> pd.DataFrame:
     return df
 
 
-def load_live_data(ticker: str) -> pd.DataFrame:
+def load_live_data(ticker: str) -> pd.DataFrame | None:
     """
-    Load recent live data for a ticker from the live cache.
-    Uses last 60 trading days of live data.
+    Load latest live features for a ticker from the live cache.
+    Returns a 1-row DataFrame (training-schema columns from live pipeline).
     """
     try:
         from src.data.live_cache import load_features
 
-        df = load_features(ticker)
+        cached = load_features(ticker)
+        if cached is None:
+            raise ValueError(f"No cache entry for {ticker}")
 
-        if df is None or len(df) < 20:
-            raise ValueError(f"Insufficient live data for {ticker}")
+        live_df = cached['features']
+        if live_df is None or live_df.empty:
+            raise ValueError(f"Empty live features for {ticker}")
 
-        return df.tail(60)
+        return live_df
 
     except Exception as e:
         logger.error(f"Could not load live data for {ticker}: {e}")
@@ -91,10 +94,25 @@ def compute_drift_scores(ref_df: pd.DataFrame, live_df: pd.DataFrame) -> dict:
             ref_vals = ref_df[feature].dropna().values
             live_vals = live_df[feature].dropna().values
 
-            if len(ref_vals) < 10 or len(live_vals) < 10:
+            if len(ref_vals) < 10 or len(live_vals) < 1:
                 continue
 
-            # PSI calculation
+            # Live cache stores one row — use percentile vs reference distribution
+            if len(live_vals) < 10:
+                live_val = float(live_vals[-1])
+                pct = float((ref_vals < live_val).mean())
+                if pct < 0.05 or pct > 0.95:
+                    psi = 0.25
+                elif pct < 0.10 or pct > 0.90:
+                    psi = 0.15
+                else:
+                    psi = 0.05
+                drift_scores[feature] = round(psi, 4)
+                if psi > 0.20:
+                    drifted_features.append(feature)
+                continue
+
+            # Multi-row live window — standard PSI
             bins = np.percentile(ref_vals, np.linspace(0, 100, 11))
             bins = np.unique(bins)
 
@@ -133,6 +151,14 @@ def compute_drift_scores(ref_df: pd.DataFrame, live_df: pd.DataFrame) -> dict:
     }
 
 
+def _save_drift_json(ticker: str, report_date: date, result: dict) -> None:
+    """Persist drift result JSON (including error summaries)."""
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    json_path = REPORTS_DIR / f"{ticker}_drift_{report_date}.json"
+    with open(json_path, "w") as f:
+        json.dump(result, f, indent=2)
+
+
 def generate_drift_report(ticker: str, report_date: date = None) -> dict:
     """
     Full drift pipeline: load data, compute PSI, save JSON summary.
@@ -153,16 +179,21 @@ def generate_drift_report(ticker: str, report_date: date = None) -> dict:
 
     except Exception as e:
         logger.error(f"Data load failed for {ticker}: {e}")
-        return {"ticker": ticker, "error": str(e)}
+        result = {"ticker": ticker, "report_date": str(report_date), "error": str(e)}
+        _save_drift_json(ticker, report_date, result)
+        return result
 
     if live_df is None:
-        return {"ticker": ticker, "error": "No live data"}
+        result = {"ticker": ticker, "report_date": str(report_date), "error": "No live data"}
+        _save_drift_json(ticker, report_date, result)
+        return result
 
     # Compute drift
     result = compute_drift_scores(ref_df, live_df)
 
     result["ticker"] = ticker
     result["report_date"] = str(report_date)
+    result["checked_at"] = datetime.utcnow().isoformat()
 
     # Evidently HTML report
     try:
@@ -197,10 +228,7 @@ def generate_drift_report(ticker: str, report_date: date = None) -> dict:
         result["html_report"] = None
 
     # Save JSON summary
-    json_path = REPORTS_DIR / f"{ticker}_drift_{report_date}.json"
-
-    with open(json_path, "w") as f:
-        json.dump(result, f, indent=2)
+    _save_drift_json(ticker, report_date, result)
 
     alert = result.get("retrain_alert", False)
 
