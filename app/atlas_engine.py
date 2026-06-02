@@ -36,14 +36,14 @@ MODEL_DIR = Path(__file__).parent.parent / 'experiments/models'
 
 def get_live_features_for_ticker(ticker: str) -> pd.DataFrame | None:
     """
-    Returns live feature DataFrame (1x43) from cache if fresh, else None.
+    Returns live feature DataFrame from cache when an entry exists.
     Used by main.py regime endpoints to pass live data to regime predictor.
     """
     if not LIVE_CACHE_AVAILABLE or load_features is None:
         return None
     try:
         cached = load_features(ticker.upper())
-        if cached and cached.get('is_fresh'):
+        if cached:
             return cached['features']
     except Exception:
         pass
@@ -52,13 +52,13 @@ def get_live_features_for_ticker(ticker: str) -> pd.DataFrame | None:
 
 def get_features_for_ticker(ticker: str, feature_cols: list) -> tuple:
     """
-    Returns (features_df, data_date_str, is_live).
-    Tries live cache first; falls back to last row of historical data.
+    Returns (features_df, data_date_str, is_fresh, from_cache).
+    Uses live cache when present; falls back to historical splits only if no cache row.
     """
     if LIVE_CACHE_AVAILABLE and load_features is not None:
         try:
             cached = load_features(ticker)
-            if cached and cached.get('is_fresh'):
+            if cached:
                 live_features = cached['features'].copy()
                 for col in feature_cols:
                     if col not in live_features.columns:
@@ -66,12 +66,13 @@ def get_features_for_ticker(ticker: str, feature_cols: list) -> tuple:
                 return (
                     live_features[feature_cols],
                     cached['as_of_date'],
-                    True
+                    cached.get('is_fresh', False),
+                    True,
                 )
         except Exception:
             pass
 
-    # Fallback: last row of historical test split
+    # Fallback: last row of historical test split (no cache row)
     X_train, y_train, X_val, y_val, X_test, y_test = load_splits(ticker)
     X_test.index = pd.to_datetime(X_test.index).normalize()
     last_row = X_test.iloc[[-1]].copy()
@@ -79,7 +80,7 @@ def get_features_for_ticker(ticker: str, feature_cols: list) -> tuple:
     for col in feature_cols:
         if col not in last_row.columns:
             last_row[col] = 0
-    return (last_row[feature_cols], last_date, False)
+    return (last_row[feature_cols], last_date, False, False)
 
 
 def get_signal(ticker: str, model_type: str = 'xgboost') -> dict:
@@ -99,7 +100,7 @@ def get_signal(ticker: str, model_type: str = 'xgboost') -> dict:
         X_train, _, _, _, X_test, _ = load_splits(ticker)
         feature_cols = list(X_train.columns)
 
-    latest, data_date, is_live = get_features_for_ticker(ticker, feature_cols)
+    latest, data_date, is_fresh, from_cache = get_features_for_ticker(ticker, feature_cols)
 
     proba   = model.predict_proba(latest)[0]
     prob_up = float(proba[1])
@@ -118,6 +119,13 @@ def get_signal(ticker: str, model_type: str = 'xgboost') -> dict:
     except Exception:
         top5 = {}
 
+    if from_cache and is_fresh:
+        data_source = 'live_cache'
+    elif from_cache:
+        data_source = 'live_cache_stale'
+    else:
+        data_source = 'historical'
+
     return {
         'ticker':      ticker,
         'signal':      signal,
@@ -126,8 +134,8 @@ def get_signal(ticker: str, model_type: str = 'xgboost') -> dict:
         'prob_down':   round(1 - prob_up, 4),
         'model':       model_type,
         'as_of_date':  data_date,
-        'is_live':     is_live,
-        'data_source': 'live_cache' if is_live else 'historical',
+        'is_live':     is_fresh,
+        'data_source': data_source,
         'top_features': top5,
     }
 

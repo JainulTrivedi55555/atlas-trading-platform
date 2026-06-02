@@ -485,18 +485,23 @@ def mlops_drift_latest():
 # ── Pipeline status ───────────────────────────────────────────────────────────
 @app.get('/status/pipeline')
 def pipeline_status():
-    """Returns live data pipeline status for all 10 tickers."""
+    """Returns live data pipeline status for all tickers."""
     if not PIPELINE_STATUS_AVAILABLE:
         return {'error': 'live_cache not available', 'pipeline_ok': False}
     try:
-        statuses    = get_pipeline_status()
-        fresh_count = sum(1 for s in statuses if s.get('is_fresh', False))
+        statuses         = get_pipeline_status()
+        fresh_count      = sum(1 for s in statuses if s.get('is_fresh', False))
+        total_tickers    = len(statuses)
+        never_fetched    = sum(1 for s in statuses if s.get('status') == 'never_fetched')
+        stale_cache_count = total_tickers - fresh_count - never_fetched
         return {
-            'pipeline_ok':   fresh_count == 10,
-            'fresh_count':   fresh_count,
-            'total_tickers': 10,
-            'tickers':       statuses,
-            'checked_at':    datetime.utcnow().isoformat(),
+            'pipeline_ok':       fresh_count == total_tickers,
+            'fresh_count':       fresh_count,
+            'stale_cache_count': stale_cache_count,
+            'never_fetched_count': never_fetched,
+            'total_tickers':     total_tickers,
+            'tickers':           statuses,
+            'checked_at':        datetime.utcnow().isoformat(),
         }
     except Exception as e:
         return {'error': str(e), 'pipeline_ok': False}

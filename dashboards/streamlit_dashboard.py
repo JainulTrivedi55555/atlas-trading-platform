@@ -78,19 +78,37 @@ def show_data_freshness_banner():
         st.info('🔌 Serving historical data (Phase 10 mode)')
         return
     statuses = get_pipeline_status()
-    fresh_tickers = [s['ticker'] for s in statuses if s.get('is_fresh')]
-    stale_tickers = [s['ticker'] for s in statuses if not s.get('is_fresh')]
     total = len(statuses) or 1
+    fresh_tickers = [s['ticker'] for s in statuses if s.get('is_fresh')]
+    stale_cached = [
+        s['ticker'] for s in statuses
+        if not s.get('is_fresh') and s.get('status') != 'never_fetched'
+    ]
+    not_cached = [s['ticker'] for s in statuses if s.get('status') == 'never_fetched']
     if len(fresh_tickers) == total:
-        latest_date = statuses[0].get('as_of_date', 'unknown')
+        latest_date = next(
+            (s.get('as_of_date') for s in statuses if s.get('is_fresh')), 'unknown'
+        )
         st.success(f'🟢 LIVE DATA — All {total} tickers fresh as of {latest_date}')
     elif len(fresh_tickers) > 0:
-        st.warning(
-            f'🟡 PARTIAL LIVE — {len(fresh_tickers)}/{total} tickers fresh. '
-            f'Stale: {", ".join(stale_tickers)}'
-        )
+        msg = f'🟡 PARTIAL LIVE — {len(fresh_tickers)}/{total} tickers fresh.'
+        if stale_cached:
+            msg += f' Stale cache ({len(stale_cached)}): {", ".join(stale_cached)}.'
+        if not_cached:
+            msg += f' Not cached ({len(not_cached)}): {", ".join(not_cached)}.'
+        st.warning(msg)
     else:
         st.warning('🟠 HISTORICAL MODE — Live pipeline not yet run today.')
+
+
+def format_data_source_label(sig: dict) -> str:
+    """Map API data_source / is_live to a display label."""
+    ds = sig.get('data_source', '')
+    if ds == 'live_cache' or (not ds and sig.get('is_live')):
+        return '🟢 Live'
+    if ds == 'live_cache_stale':
+        return '🟡 Stale cache'
+    return '🔌 Historical'
 
 def get_ticker_freshness_badge(ticker: str) -> str:
     if not LIVE_ENABLED:
@@ -99,6 +117,8 @@ def get_ticker_freshness_badge(ticker: str) -> str:
     ticker_st = next((s for s in statuses if s['ticker'] == ticker), None)
     if ticker_st and ticker_st.get('is_fresh'):
         return f'<span style="color:#3FB950;font-weight:bold">🟢 LIVE {ticker_st.get("as_of_date","")}</span>'
+    elif ticker_st and ticker_st.get('status') == 'never_fetched':
+        return '<span style="color:#F85149">🔴 NOT CACHED</span>'
     elif ticker_st and 'as_of_date' in ticker_st:
         return f'<span style="color:#D29922">🟡 STALE (last: {ticker_st.get("as_of_date","")})</span>'
     return '<span style="color:#F85149">🔴 NO DATA</span>'
@@ -202,7 +222,7 @@ if 'error' not in sig_data:
     col2.metric('Confidence',  f"{sig_data['confidence']*100:.1f}%")
     col3.metric('Prob Up',     f"{sig_data['prob_up']*100:.1f}%")
     col4.metric('As Of',       sig_data.get('as_of_date', 'N/A'))
-    col5.metric('Data Source', '🟢 Live' if sig_data.get('is_live') else '🔌 Historical')
+    col5.metric('Data Source', format_data_source_label(sig_data))
 
     # ── Confidence Filter Check for this ticker ───────────────────────────
     if FILTER_ENABLED:
@@ -445,7 +465,7 @@ if isinstance(all_sigs, list) and len(all_sigs) > 0:
                 'Filter':     filter_pass,
                 'Prob Up':    f"{s['prob_up']*100:.1f}%",
                 'Date':       s['as_of_date'],
-                'Source':     '🟢 Live' if s.get('is_live') else '🔌 Historical',
+                'Source':     format_data_source_label(s),
             })
     sigs_df = pd.DataFrame(sigs_data)
 
