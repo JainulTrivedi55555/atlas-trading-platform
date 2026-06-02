@@ -28,7 +28,9 @@ TICKERS = [
 
 FETCH_PERIOD   = '1y'
 FETCH_DELAY    = 1.2
-MIN_CONFIDENCE = 0.30
+# Minimum model edge to cache live features: abs(prob_up - 0.5) * 2
+# 0.12 ≈ 6% directional edge — tuned for live deployment (0.30 skipped all prod tickers)
+MIN_CONFIDENCE = 0.12
 
 
 def fetch_ohlcv(ticker: str, period: str = FETCH_PERIOD) -> pd.DataFrame | None:
