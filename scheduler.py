@@ -230,14 +230,29 @@ def scheduled_daily_job():
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='ATLAS daily pipeline scheduler')
+    parser.add_argument(
+        '--once',
+        action='store_true',
+        help='Run the daily job once and exit (used by systemd timer)',
+    )
+    args = parser.parse_args()
+
     logger.info('=' * 60)
     logger.info(f'ATLAS Scheduler starting — {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     logger.info(f'Tickers loaded: {len(TICKERS)} — {TICKERS}')
     logger.info('=' * 60)
 
-    # Initialise databases
     init_db()
     init_sentiment_db()
+
+    if args.once:
+        logger.info('Running in --once mode (single daily job, then exit)...')
+        scheduled_daily_job()
+        logger.info('ATLAS --once run complete.')
+        sys.exit(0)
 
     # Run full pipeline immediately on startup so data is always fresh
     logger.info('Running startup pipeline (immediate run)...')
