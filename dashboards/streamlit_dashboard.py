@@ -204,7 +204,10 @@ if st.sidebar.button('Refresh Now (All Tickers)'):
 # ── MAIN CONTENT ──────────────────────────────────────────────────────────────
 st.title('📊 ATLAS — Algorithmic Trading Signal Dashboard')
 show_data_freshness_banner()
-st.markdown(f'*Last updated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*')
+import pytz as _pytz
+_et = _pytz.timezone('US/Eastern')
+_now_et = datetime.now(_pytz.utc).astimezone(_et)
+st.markdown(f'*Last updated: {_now_et.strftime("%Y-%m-%d %H:%M:%S")} ET*')
 st.markdown('---')
 
 # ── Base Signal ───────────────────────────────────────────────────────────────
